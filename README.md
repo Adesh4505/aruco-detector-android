@@ -25,6 +25,6 @@ This app continuously scans ArUco markers using CameraX and OpenCV. Once a marke
 - Android 10+ (minSdk 24)
 - Camera permission
 
-## ✅ Build
+##  Build
 ```bash
 ./gradlew assembleRelease

@@ -1,12 +1,14 @@
 package com.example.aruco_scanner.presentation
 
 import android.graphics.PointF
+import android.util.Log
 import android.widget.Toast
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -15,6 +17,7 @@ import java.util.concurrent.Executors
 
 @Composable
 fun CameraPreview(viewModel: MainViewModel, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val decoder = ArUcoDecoder()
 
@@ -25,41 +28,55 @@ fun CameraPreview(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
 
             val cameraExecutor = Executors.newSingleThreadExecutor()
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener({
                 try {
                     val cameraProvider = cameraProviderFuture.get()
 
-                    val preview = Preview.Builder().build().apply {
-                        setSurfaceProvider(previewView.surfaceProvider)
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                        Log.d("CameraX", " Surface provider set")
                     }
 
                     val analyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
-                        .apply {
-                            setAnalyzer(cameraExecutor) { image ->
+                        .also {
+                            it.setAnalyzer(cameraExecutor) { image ->
                                 try {
                                     val result = decoder.detectMarkers(image)
 
                                     if (result.ids.isNotEmpty() && result.corners.isNotEmpty()) {
-                                        val (w, h) = previewView.width to previewView.height
-                                        val (iw, ih) = image.width to image.height
-                                        val scaleX = w.toFloat() / ih
-                                        val scaleY = h.toFloat() / iw
+                                        Log.d("Aruco", " Detected ID: ${result.ids.first()}")
 
-                                        val scaledCorners = result.corners.first().map {
-                                            PointF(it.y * scaleX, it.x * scaleY)
+                                        //  Step 1: Get dimensions
+                                        val imageWidth = image.width      // usually rotated
+                                        val imageHeight = image.height
+                                        val viewWidth = previewView.width
+                                        val viewHeight = previewView.height
+
+                                        //  Step 2: Scale + flip coordinates
+                                        val scaleX = viewWidth.toFloat() / imageHeight
+                                        val scaleY = viewHeight.toFloat() / imageWidth
+
+                                        val scaledCorners = result.corners.first().map { pt ->
+                                            PointF(pt.y * scaleX, pt.x * scaleY) // swap X/Y
                                         }
 
-                                        viewModel.onMarkersDetected(result.ids.first(), scaledCorners)
+                                        //  Send scaled corners to UI
+                                        viewModel.onMarkersDetected(
+                                            markerId = result.ids.first(),
+                                            corners = scaledCorners
+                                        )
                                     } else {
-                                        viewModel.clearOverlay()
+                                        viewModel.clearOverlay() // optional: hide overlay
+                                        Log.d("Aruco", "No marker detected")
                                     }
 
                                     image.close()
                                 } catch (e: Exception) {
+                                    Log.e("Analyzer", "Exception in analyzer", e)
                                     image.close()
                                 }
                             }
@@ -73,8 +90,11 @@ fun CameraPreview(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         analyzer
                     )
 
+                    Log.d("CameraX", " Camera bound to lifecycle")
+
                 } catch (e: Exception) {
-                    Toast.makeText(ctx, "Camera init failed", Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, "Camera init failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Log.e("CameraX", "Camera init error", e)
                 }
             }, ContextCompat.getMainExecutor(ctx))
 

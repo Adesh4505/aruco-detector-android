@@ -1,5 +1,6 @@
 package com.example.aruco_scanner.presentation
 
+import android.graphics.PointF
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -24,32 +25,36 @@ fun MainScreen(
 ) {
     val uiState = viewModel.uiState
     val context = LocalContext.current
-    val corners = viewModel.overlayCorners
+    val corners: List<PointF> = viewModel.overlayCorners
 
     // Trigger vibration on scan success
     LaunchedEffect(uiState.showBanner) {
         if (uiState.showBanner) {
-            context.getSystemService<Vibrator>()?.let { vibrator ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
-                }
+            val vibrator = context.getSystemService<Vibrator>()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(
+                    VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
             }
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Camera feed
         cameraView()
 
+        // Green outline on marker
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (corners.size == 4) {
-                val pts = corners.map { Offset(it.x, it.y) }
-                drawLine(Color.Green, pts[0], pts[1], strokeWidth = 4f)
-                drawLine(Color.Green, pts[1], pts[2], strokeWidth = 4f)
-                drawLine(Color.Green, pts[2], pts[3], strokeWidth = 4f)
-                drawLine(Color.Green, pts[3], pts[0], strokeWidth = 4f)
+                val pts = corners.map { point -> Offset(point.x, point.y) }
+                drawLine(color = Color.Green, start = pts[0], end = pts[1], strokeWidth = 4f)
+                drawLine(color = Color.Green, start = pts[1], end = pts[2], strokeWidth = 4f)
+                drawLine(color = Color.Green, start = pts[2], end = pts[3], strokeWidth = 4f)
+                drawLine(color = Color.Green, start = pts[3], end = pts[0], strokeWidth = 4f)
             }
         }
 
+        // Success banner
         if (uiState.showBanner && uiState.markerId != null && uiState.message != null) {
             Box(modifier = Modifier.align(Alignment.TopCenter)) {
                 Banner(markerId = uiState.markerId, message = uiState.message)
@@ -69,9 +74,13 @@ fun Banner(markerId: Int, message: String) {
         contentAlignment = Alignment.CenterStart
     ) {
         Column {
-            Text("Scan complete", color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Text("ID: $markerId", color = Color.White)
-            Text(message, color = Color.White)
+            Text(
+                text = "Scan complete",
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(text = "ID: $markerId", color = Color.White)
+            Text(text = message, color = Color.White)
         }
     }
 }

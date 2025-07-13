@@ -17,51 +17,65 @@ data class MarkerDetectionResult(
 
 class ArUcoDecoder {
 
-    private val detector by lazy { ArucoDetector() }
+    private val detector: ArucoDetector by lazy {
+        ArucoDetector()
+    }
 
     fun detectMarkers(imageProxy: ImageProxy): MarkerDetectionResult {
         val mat = imageProxyToMat(imageProxy)
+
         val cornersMatList = mutableListOf<Mat>()
         val ids = Mat()
 
         detector.detectMarkers(mat, cornersMatList, ids)
         imageProxy.close()
 
-        val corners = cornersMatList.map { mat ->
-            val pts = FloatArray(8)
-            mat.get(0, 0, pts)
-            listOf(
-                PointF(pts[0], pts[1]),
-                PointF(pts[2], pts[3]),
-                PointF(pts[4], pts[5]),
-                PointF(pts[6], pts[7])
-            )
+        val corners = cornersMatList.mapNotNull { cornerMat ->
+            if (cornerMat.empty() || cornerMat.type() != CvType.CV_32FC2) {
+                null
+            } else {
+                val pts = FloatArray(8)
+                cornerMat.get(0, 0, pts)
+                listOf(
+                    PointF(pts[0], pts[1]),
+                    PointF(pts[2], pts[3]),
+                    PointF(pts[4], pts[5]),
+                    PointF(pts[6], pts[7])
+                )
+            }
         }
 
         return MarkerDetectionResult(ids.toIntList(), corners)
     }
 
-    private fun imageProxyToMat(imageProxy: ImageProxy): Mat {
-        val y = imageProxy.planes[0].buffer
-        val vu = imageProxy.planes[2].buffer
-        val data = ByteArray(y.remaining() + vu.remaining())
-        y.get(data, 0, y.remaining())
-        vu.get(data, y.remaining(), vu.remaining())
 
-        val yuvImage = android.graphics.YuvImage(data, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
+    private fun imageProxyToMat(imageProxy: ImageProxy): Mat {
+        val yBuffer = imageProxy.planes[0].buffer
+        val vuBuffer = imageProxy.planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val vuSize = vuBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + vuSize)
+        yBuffer.get(nv21, 0, ySize)
+        vuBuffer.get(nv21, ySize, vuSize)
+
+        val yuvImage = android.graphics.YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
         val out = java.io.ByteArrayOutputStream()
         yuvImage.compressToJpeg(Rect(0, 0, imageProxy.width, imageProxy.height), 100, out)
-        val bitmap = BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
+        val jpegBytes = out.toByteArray()
 
-        return Mat(bitmap.height, bitmap.width, CvType.CV_8UC4).apply {
-            Utils.bitmapToMat(bitmap, this)
-            Imgproc.cvtColor(this, this, Imgproc.COLOR_RGBA2RGB)
-        }
+        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+        val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
+        Utils.bitmapToMat(bitmap, mat)
+        Imgproc.cvtColor(mat, mat, Imgproc.COLOR_RGBA2RGB)
+
+        return mat
     }
 
     private fun Mat.toIntList(): List<Int> {
-        val buffer = IntArray(rows())
-        get(0, 0, buffer)
+        val buffer = IntArray(this.rows())
+        this.get(0, 0, buffer)
         return buffer.toList()
     }
 }

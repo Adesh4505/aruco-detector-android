@@ -6,7 +6,9 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aruco_scanner.utils.MarkerUtils
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 data class ScanUIState(
     val markerId: Int? = null,
@@ -20,26 +22,29 @@ class MainViewModel : ViewModel() {
     var uiState by mutableStateOf(ScanUIState())
         private set
 
+    private var lastDetections: MutableList<Pair<Int, Long>> = mutableListOf()
+    private var scanPauseJob: Job? = null
+
     var overlayCorners by mutableStateOf<List<PointF>>(emptyList())
         private set
-
-    private var lastDetections = mutableListOf<Pair<Int, Long>>()
-    private var scanPauseJob: Job? = null
 
     fun onMarkersDetected(markerId: Int, corners: List<PointF>?) {
         if (!uiState.isScanning) return
 
-        val now = SystemClock.elapsedRealtime()
-        lastDetections.add(markerId to now)
+        val currentTime = SystemClock.elapsedRealtime()
+        lastDetections.add(markerId to currentTime)
         if (lastDetections.size > 3) lastDetections.removeAt(0)
 
-        corners?.let { overlayCorners = it }
+        if (corners != null) {
+            overlayCorners = corners
+        }
 
         val ids = lastDetections.map { it.first }
         val times = lastDetections.map { it.second }
 
         if (ids.distinct().size == 1 && (times.last() - times.first()) < 300) {
-            onScanSuccess(markerId, MarkerUtils.decodeMarkerId(markerId))
+            val decoded = MarkerUtils.decodeMarkerId(markerId)
+            onScanSuccess(markerId, decoded)
         }
     }
 
@@ -56,10 +61,11 @@ class MainViewModel : ViewModel() {
             delay(2000)
             uiState = uiState.copy(showBanner = false, isScanning = true)
             lastDetections.clear()
-            overlayCorners = emptyList()
+            overlayCorners = emptyList() // hide green box
         }
     }
 
+    //  Clear green outline if no detection
     fun clearOverlay() {
         overlayCorners = emptyList()
     }
