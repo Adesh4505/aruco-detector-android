@@ -43,7 +43,6 @@ class MainActivity : ComponentActivity() {
                 hasPermission = granted
             }
 
-            // Only trigger permission request on first load
             LaunchedEffect(Unit) {
                 if (!hasPermission) {
                     permissionLauncher.launch(Manifest.permission.CAMERA)
